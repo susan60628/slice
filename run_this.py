@@ -15,7 +15,7 @@ def run_Slice():
             # defined observation
             observation = np.zeros((3,))
             observation[0] = np_uRLLC[itera_][1] #test
-            observation[1] = np_eMBB[itera_][1]
+            observation[1] = np_eMBB[itera_][1] #test
             observation[2] = np_mMTC[itera_][1]
 
             # RL choose action based on observation
