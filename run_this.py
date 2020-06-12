@@ -1,12 +1,20 @@
 from slice_env import Slice
 from DQN_modified import DeepQNetwork
 import numpy as np
+import matplotlib.pyplot as plt
 
-iteration = 100
+iteration = 1000
+list_action = []
+
+def plot_action():
+    plt.plot(np.arange(len(list_action)), list_action)
+    plt.ylabel('Action')
+    plt.xlabel('training steps')
+    plt.show()
 
 def run_Slice():
     step = 0
-    for episode in range(500):
+    for episode in range(80):
         # initial observation
         np_uRLLC, np_eMBB, np_mMTC, np_uRLLC_data, np_eMBB_data, np_mMTC_data = env.reset(iteration)
 
@@ -26,7 +34,8 @@ def run_Slice():
                               observation,
                               np_uRLLC_data[int(np_uRLLC[itera_][0]):int(np_uRLLC[itera_][0] + np_uRLLC[itera_][1]), :],
                               np_eMBB_data[int(np_eMBB[itera_][0]):int(np_eMBB[itera_][0] + np_eMBB[itera_][1]), :],
-                              np_mMTC_data[int(np_mMTC[itera_][0]):int(np_mMTC[itera_][0] + np_mMTC[itera_][1]), :],)
+                              np_mMTC_data[int(np_mMTC[itera_][0]):int(np_mMTC[itera_][0] + np_mMTC[itera_][1]), :],
+                              step)
 
             # defined next observation
             observation_ = np.zeros((3,))
@@ -34,15 +43,12 @@ def run_Slice():
             observation_[1] = np_eMBB[itera_+1][1]
             observation_[2] = np_mMTC[itera_+1][1]
 
-            print("o:", observation, "a:", action, "r:", reward, "o_:", observation_)
-
             RL.store_transition(observation, action, reward, observation_)
 
-            if (step > 200) and (step % 5 == 0):
-                RL.learn()
-
-            # swap observation
-            observation = observation_
+            if (step > 1000) and (step % 5 == 0):
+                cost = RL.learn()
+                print("o:", observation, "a:", action, "r:", reward, "o_:", observation_, "cost:", cost)
+                list_action.append(action)
 
             step += 1
 
@@ -53,14 +59,16 @@ if __name__ == "__main__":
     # Slice game
     env = Slice()
     RL = DeepQNetwork(env.n_actions, env.n_features,
-                      learning_rate=0.01,
+                      learning_rate=0.001,
                       reward_decay=0.9,
                       e_greedy=0.9,
-                      replace_target_iter=200,
-                      memory_size=2000,
+                      replace_target_iter=1000,
+                      memory_size=10000,
                       #output_graph=True
                       )
     run_Slice()
     RL.plot_cost()
     env.plot_latency()
     env.plot_se()
+    env.plot_cr()
+    plot_action()

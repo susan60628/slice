@@ -142,6 +142,8 @@ class DeepQNetwork:
         # increasing epsilon
         self.epsilon = self.epsilon + self.epsilon_increment if self.epsilon < self.epsilon_max else self.epsilon_max
         self.learn_step_counter += 1
+        
+        return cost
 
     def plot_cost(self):
         import matplotlib.pyplot as plt

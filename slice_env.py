@@ -18,6 +18,10 @@ class Slice:
         self.latency_uRLLC_hist = []
         self.latency_eMBB_hist = []
         self.latency_mMTC_hist = []
+        self.CR_list = []
+        self.CR_c_list = []
+        self.CR_e_list = []
+        np.savetxt("action_data.csv", self.action_space, fmt='%d,')
 
     def define_action(self): # Action Shape: (26244, 27) => 9^3 * 36 = 26244
         # define action for bandwidth allocation (10MHz for three services, the minimum unit is 1MHz)
@@ -83,7 +87,7 @@ class Slice:
         return data
 
     def computational_rate(self, list_latency, np_action, rb, mcs):
-        # computational requirement with Cexp = 550 GFLOPS, polynomial coefficients = (32.583, 1.072, 0.03), CPU = 2GHz, d_e = 30m, d_ec = 60m, d_c = 90m
+        # computational requirement with Cexp = 550 GFLOPS, polynomial coefficients = (32.583, 1.072, 0.03), CPU = 2GHz, d_e = 30m, d_ec = 60m, d_c = 90m, v = 1000 m/ms
         c = (550 * rb * 33.685 * mcs * 0.00001) / 4
         c_e = 0
         c_c = 0
@@ -92,20 +96,22 @@ class Slice:
             c_temp2 = 0
             if np_action[i] == 0: # in edge cloud
                 if i == 0: # first VNF is in edge, d_e = 30m
-                    c_temp1 = c / (list_latency[i] - 0.0015)
-                elif i < 7 and np_action[i+1] != np_action[i]: # split exist, d_ec = 60m
+                    c_temp1 = c / (list_latency[i] - 0.03)
+                elif i < 7 and np_action[i+1] != np_action[i]: # split exist, d_ec = 90m
                     c_temp1 = c / list_latency[i]
-                    c_temp2 = c / (list_latency[i+1] - 0.003)
+                    c_temp2 = c / (list_latency[i+1] - 0.09)
                     c_temp1 = max(c_temp1, c_temp2)
                 else:
                     c_temp1 = c / list_latency[i]
                 c_e += c_temp1
             else: # in central cloud
-                if i == 1: # first VNF is in central, d_c = 90m
-                    c_temp1 = c / (list_latency[i] - 0.0045)
-                elif np_action[i-1] != np_action[i]: # split exist, d_ec = 60m
+                if i == 1: # first VNF is in central, d_c = 120m
+                    if list_latency[i] - 0.12 <= 0:
+                        return 8960, 17920
+                    c_temp1 = c / (list_latency[i] - 0.12)
+                elif np_action[i-1] != np_action[i]: # split exist, d_ec = 90m
                     c_temp1 = c / list_latency[i]
-                    c_temp2 = c / (list_latency[i-1] - 0.003)
+                    c_temp2 = c / (list_latency[i-1] - 0.09)
                     c_temp1 = max(c_temp1, c_temp2)
                 else:
                     c_temp1 = c / list_latency[i]
@@ -113,7 +119,7 @@ class Slice:
         
         return c_e, c_c
 
-    def step(self, action, o, data_uRLLC, data_eMBB, data_mMTC):
+    def step(self, action, o, data_uRLLC, data_eMBB, data_mMTC, step):
         # get action space detail with chooses action
         np_action_detail = np.array(self.action_space[action:(action+1), :]).flatten()
 
@@ -125,7 +131,7 @@ class Slice:
         # calculate spectrum efficiency (bit/Hz)
         SE = (capacity_uRLLC + capacity_eMBB + capacity_mMTC) / 10
         # change SE dimension
-        SE_point = SE / (6.65 - 0.14)
+        SE_point = SE / (6.65 - 0.14) - 0.5
         self.SE_hist.append(SE)
 
         # calculate latency of spectrum: 8Mbps = 1 MB/s, 100ms = 1s
@@ -149,12 +155,12 @@ class Slice:
         error_point = (error_uRLLC_a + error_eMBB_a + error_mMTC_a) / 3
 
         # get VNF deployment action
-        np_action_uRLLC = np_action_detail[0:8]
-        np_action_eMBB = np_action_detail[8:16]
-        np_action_mMTC = np_action_detail[16:24]
+        np_action_uRLLC = np_action_detail[3:11]
+        np_action_eMBB = np_action_detail[11:19]
+        np_action_mMTC = np_action_detail[19:27]
         # set latency constraints
-        list_latency_uRLLC = [0.05, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-        list_latency_eMBB = [1, 3, 3, 3, 10, 10, 10, 10]
+        list_latency_uRLLC = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2]
+        list_latency_eMBB = [1, 3, 3, 3, 10, 10, 50, 50]
         list_latency_mMTC = [10, 10, 10, 10, 200, 500, 1000, 2000]
         # calculate resource blocks(? MHz * 1000 / 180 kHz)
         rb_uRLLC = int(np_action_detail[0] * 1000 / 180)
@@ -169,14 +175,20 @@ class Slice:
         c_e_total = c_e_uRLLC + c_e_eMBB + c_e_mMTC
         c_c_point = (c_c_total / 8960) * -1
         c_e_point = (c_e_total / 4480) * -1
+        c_point = (c_c_point + c_e_point) / 2 + 0.5
         
-        # hist of latency
-        self.latency_hist.append(np.average(np_latency_uRLLC) + np.average(np_latency_eMBB) + np.average(np_latency_mMTC) + (0.75 / np_latency_uRLLC_a.shape[0]) + (50 / np_latency_eMBB_a.shape[0]) + (3740 / np_latency_mMTC_a.shape[0]))
-        self.latency_uRLLC_hist.append(np.average(np_latency_uRLLC) + (0.75 / np_latency_uRLLC_a.shape[0]))
-        self.latency_eMBB_hist.append(np.average(np_latency_eMBB) + (50 / np_latency_eMBB_a.shape[0]))
-        self.latency_mMTC_hist.append(np.average(np_latency_mMTC) + (3740 / np_latency_mMTC_a.shape[0]))
+        # append list_hist if RL learned
+        if step > 1000 and (step % 5 == 0):           
+            self.SE_hist.append(SE)
+            self.latency_hist.append(np.average(np_latency_uRLLC) + np.average(np_latency_eMBB) + np.average(np_latency_mMTC) + (1 / np_latency_uRLLC_a.shape[0]) + (130 / np_latency_eMBB_a.shape[0]) + (3740 / np_latency_mMTC_a.shape[0]))
+            self.latency_uRLLC_hist.append(np.average(np_latency_uRLLC) + (1 / np_latency_uRLLC_a.shape[0]))
+            self.latency_eMBB_hist.append(np.average(np_latency_eMBB) + (130 / np_latency_eMBB_a.shape[0]))
+            self.latency_mMTC_hist.append(np.average(np_latency_mMTC) + (3740 / np_latency_mMTC_a.shape[0]))
+            self.CR_list.append(c_c_total + c_e_total)
+            self.CR_c_list.append(c_c_total)
+            self.CR_e_list.append(c_e_total)
 
-        reward = SE_point + latency_point + error_point + c_c_point + c_e_point
+        reward = SE_point + latency_point + error_point + c_point
         return reward
 
     def reset(self, iteration):
@@ -264,12 +276,22 @@ class Slice:
         plt.plot(np.arange(len(self.latency_mMTC_hist)), self.latency_mMTC_hist, label="mMTC")
         plt.ylabel('Latency')
         plt.xlabel('training steps')
+        plt.legend()
         plt.show()
 
     def plot_se(self):
         plt.plot(np.arange(len(self.SE_hist)), self.SE_hist)
         plt.ylabel('SE')
         plt.xlabel('training steps')
+        plt.show()
+    
+    def plot_cr(self):
+        plt.plot(np.arange(len(self.CR_list)), self.CR_list, label="Total")
+        plt.plot(np.arange(len(self.CR_c_list)), self.CR_c_list, label="central")
+        plt.plot(np.arange(len(self.CR_e_list)), self.CR_e_list, label= "edge")
+        plt.ylabel('Computational Rate')
+        plt.xlabel('training steps')
+        plt.legend()
         plt.show()
 
 if __name__ == "__main__":
