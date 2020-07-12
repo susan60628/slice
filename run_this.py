@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 iteration = 1000
 list_action = []
+b_draw_plt = True
 
 def plot_action():
     plt.plot(np.arange(len(list_action)), list_action)
@@ -16,7 +17,7 @@ def run_Slice():
     step = 0
     for episode in range(80):
         # initial observation
-        np_uRLLC, np_eMBB, np_mMTC, np_uRLLC_data, np_eMBB_data, np_mMTC_data = env.reset(iteration)
+        np_uRLLC, np_eMBB, np_mMTC, np_uRLLC_data, np_eMBB_data, np_mMTC_data = env.reset()
 
         for itera_ in range(iteration):
 
@@ -45,7 +46,7 @@ def run_Slice():
 
             RL.store_transition(observation, action, reward, observation_)
 
-            if (step > 1000) and (step % 5 == 0):
+            if (step > iteration) and (step % 5 == 0):
                 cost = RL.learn()
                 print("o:", observation, "a:", action, "r:", reward, "o_:", observation_, "cost:", cost)
                 list_action.append(action)
@@ -57,7 +58,7 @@ def run_Slice():
 
 if __name__ == "__main__":
     # Slice game
-    env = Slice()
+    env = Slice(iteration)
     RL = DeepQNetwork(env.n_actions, env.n_features,
                       learning_rate=0.001,
                       reward_decay=0.9,
@@ -67,8 +68,9 @@ if __name__ == "__main__":
                       #output_graph=True
                       )
     run_Slice()
-    RL.plot_cost()
-    env.plot_latency()
-    env.plot_se()
-    env.plot_cr()
-    plot_action()
+    if b_draw_plt:
+        RL.plot_cost()
+        env.plot_latency()
+        env.plot_se()
+        env.plot_cr()
+        plot_action()
