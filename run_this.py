@@ -1,4 +1,4 @@
-from slice_env import Slice
+from slice_env_rb import Slice
 from DQN_modified import DeepQNetwork
 import numpy as np
 import matplotlib.pyplot as plt
@@ -48,7 +48,7 @@ def run_Slice():
 
             if (step > iteration) and (step % 5 == 0):
                 cost = RL.learn()
-                print("o:", observation, "a:", action, "r:", reward, "o_:", observation_, "cost:", cost)
+                print("episode:", episode, "step:", step,"o:", observation, "a:", action, "r:", reward, "o_:", observation_, "cost:", cost)
                 list_action.append(action)
 
             step += 1
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     run_Slice()
     if b_draw_plt:
         RL.plot_cost()
-        env.plot_latency()
+        # env.plot_latency()
         env.plot_se()
-        env.plot_cr()
+        # env.plot_cr()
         plot_action()

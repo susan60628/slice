@@ -4,14 +4,18 @@ import numpy as np
 import gc
 import pandas
 from pandas import DataFrame
+import matplotlib.pyplot as plt
 
 class Slice:
-    def __init__(self):
+    def __init__(self, iteration):
+        self.iteration = iteration
         self.size_of_eMBB = [6400, 12800, 19200, 25600, 32000, 300000, 400000, 500000, 600000, 700000]
         self.column_of_rb = ["arrival", "datasize", "latency", "error", "snr"]
         self.action_space = self.define_action()
         self.n_actions = len(self.action_space)
         self.n_features = 3
+        self.SE_hist = []
+        np.savetxt("action_data.csv", self.action_space, fmt='%d,')
 
     def define_action(self):
         # define action for bandwidth allocation (10MHz for three services, the minimum unit is 1MHz)
@@ -21,23 +25,7 @@ class Slice:
             for n in range(1, 10-m):
                 np_action_space_1[i, :] = np.array([m, n, (10-m-n)])
                 i += 1
-        # np_action_space_1_c = np.copy(np_action_space_1)
-        # for m in range(6):
-        #     np_action_space_1_c = np.vstack((np_action_space_1_c, np_action_space_1))
-        # np_action_space_1_s = np_action_space_1_c[np.lexsort(np.fliplr(np_action_space_1_c).T)]
-        
-        # # define action for VNF deployment (1: central cloud, 0: edge cloud)
-        # np_action_space_2 = np.zeros((7,8))
-        # for m in range(7):
-        #     np_action_space_2[m, m+1:] = 1
-        # np_action_space_2_c = np.copy(np_action_space_2)
-        # for m in range(35):
-        #     np_action_space_2_c = np.vstack((np_action_space_2_c, np_action_space_2))
-        
-        # # join two action
-        # np_action_space = np.concatenate((np_action_space_1_s, np_action_space_2_c), axis=1)
 
-        # return np_action_space
         return np_action_space_1
 
     def round_robin(self, data, datarate): # data(byte), datarate(Mbps)
@@ -45,11 +33,11 @@ class Slice:
         data = -np.sort(-data, axis=0)
 
         # calculate the transmit datasize in 0.5ms by datarate
-        datarate_ms = (datarate * 1000000) / (8 * 200)
+        datarate_ms = (datarate * 1000000) / (8 * 2000)
 
         # transmit data
         i = 0
-        while i < 200:
+        while i < 2000:
             data = data - (datarate_ms / data.shape[0])
             # skip the negitive and zero value
             data = data[data.min(axis=1)>0, :]
@@ -57,7 +45,7 @@ class Slice:
         
         return data
 
-    def step(self, action, o, data_uRLLC, data_eMBB, data_mMTC):
+    def step(self, action, o, data_uRLLC, data_eMBB, data_mMTC, step):
         # get action space detail with chooses action
         np_action_detail = np.array(self.action_space[action:(action+1), :]).flatten()
 
@@ -67,17 +55,17 @@ class Slice:
         capacity_mMTC = math.log2((pow(10,(-10/10))+1)) * int(np_action_detail[2])
 
         # calculate spectrum efficiency (bit/Hz)
-        int_SE = (capacity_uRLLC + capacity_eMBB + capacity_mMTC) / 10
+        SE = (capacity_uRLLC + capacity_eMBB + capacity_mMTC) / 10
         # change SE dimension
-        SE_point = int_SE / (6.65 - 0.14)
+        SE_point = SE / (6.65 - 0.14) * 2 - 1
 
-        # calculate latency of spectrum: 8Mbps = 1 MB/s, 100ms = 1s
-        np_latency_uRLLC = (data_uRLLC[:, 1:2] * 100 * 8) / (capacity_uRLLC * 1000000)
-        np_latency_eMBB = (data_eMBB[:, 1:2] * 100 * 8) / (capacity_eMBB * 1000000)
-        np_latency_mMTC = (data_mMTC[:, 1:2] * 100 * 8) / (capacity_mMTC * 1000000)
+        # calculate latency of spectrum: 8Mbps = 1 MB/s, 1000ms = 1s
+        np_latency_uRLLC = (data_uRLLC[:, 1:2] * 1000 * 8) / (capacity_uRLLC * 1000000)
+        np_latency_eMBB = (data_eMBB[:, 1:2] * 1000 * 8) / (capacity_eMBB * 1000000)
+        np_latency_mMTC = (data_mMTC[:, 1:2] * 1000 * 8) / (capacity_mMTC * 1000000)
         np_latency_uRLLC_a = data_uRLLC[:, 2:3] - np_latency_uRLLC
         np_latency_eMBB_a = (data_eMBB[:, 2:3] - np_latency_eMBB) * 0.1
-        np_latency_mMTC_a = (data_mMTC[:, 2:3] - np_latency_mMTC) * 0.01
+        np_latency_mMTC_a = (data_mMTC[:, 2:3] - np_latency_mMTC) * 0.001
         # change latency dimension
         latency_point = (np.sum(np_latency_uRLLC_a) + np.sum(np_latency_eMBB_a) + np.sum(np_latency_mMTC_a)) / (np_latency_uRLLC_a.shape[0] + np_latency_eMBB_a.shape[0] + np_latency_mMTC_a.shape[0])
 
@@ -91,22 +79,21 @@ class Slice:
         # change error rate dimension
         error_point = (error_uRLLC_a + error_eMBB_a + error_mMTC_a) / 3
 
+        # append list_hist if RL learned
+        if step > self.iteration and (step % 5 == 0):           
+            self.SE_hist.append(SE)
+
         reward = SE_point + latency_point + error_point
         return reward
 
-    def reset(self, iteration):
+    def reset(self):
         # for state t+1
-        i_temp = iteration + 1
+        i_temp = self.iteration + 1
         
         # generate random packet for iteration
-        self.np_data_uRLLC = self.generate_data("uRLLC",20,80,int((i_temp*100)/20),1,0.00001)
-        self.np_data_eMBB = self.generate_data("eMBB",2,10,int((i_temp*100)/2),10,0.001)
-        self.np_data_mMTC = self.generate_data("mMTC",10,20,int((i_temp*100)/10),100,0.01)
-
-        # arrange numpy data to dataframe
-        # self.df_data_uRLLC = self.result_to_dataFrame(self.np_data_uRLLC, self.column_of_rb)
-        # self.df_data_eMBB = self.result_to_dataFrame(self.np_data_eMBB, self.column_of_rb)
-        # self.df_data_mMTC = self.result_to_dataFrame(self.np_data_mMTC, self.column_of_rb)
+        self.np_data_uRLLC = self.generate_data("uRLLC",160,200,int((i_temp*1000)/160),1,0.00001)
+        self.np_data_eMBB = self.generate_data("eMBB",2,12,int((i_temp*1000)/2),10,0.001)
+        self.np_data_mMTC = self.generate_data("mMTC",10,160,int((i_temp*1000)/10),1000,0.01)
 
         # cut data to iteration
         self.np_data_uRLLC_a = self.cut_data(self.np_data_uRLLC[:, :1], i_temp)
@@ -126,10 +113,13 @@ class Slice:
 
         # defined datasize (byte)
         if type == "mMTC":
+            # self.np_datasize = np.full(s, 40)
             self.np_datasize = np.random.randint(100,250,[s])
         elif type == "eMBB" :
+            # self.np_datasize = np.random.randint(100,250,[s])
             self.np_datasize = np.random.choice(self.size_of_eMBB,s)
         else: # uRLLC
+            # self.np_datasize = np.random.choice(self.size_of_eMBB,s)
             self.np_datasize = np.full(s, 40)
         
         # defined SLA latency (ms)
@@ -148,7 +138,7 @@ class Slice:
         self.count_x = 0
         self.count_y = 0
         self.j = 0
-        self.second = 100
+        self.second = 1000
         self.np_arr = np.zeros((iteration,2))
         for i in range(self.np_flatten.size):
             self.second = self.second - self.np_flatten[i]
@@ -158,19 +148,25 @@ class Slice:
                 self.np_arr[self.j][0]= self.count_x
                 self.np_arr[self.j][1]= self.count_y + 1
                 self.j += 1
-                self.second += 100
+                self.second += 1000
                 self.count_x = i + 1
                 self.count_y = 0
             else:
                 self.np_arr[self.j][0]= self.count_x
                 self.np_arr[self.j][1]= self.count_y
                 self.j += 1
-                self.second += 100
+                self.second += 1000
                 self.count_x = i
                 self.count_y = 1
             if self.j == iteration:
                 break
         return self.np_arr
 
+    def plot_se(self):
+        plt.plot(np.arange(len(self.SE_hist)), self.SE_hist)
+        plt.ylabel('SE')
+        plt.xlabel('training steps')
+        plt.show()
+
 if __name__ == "__main__":
-    slice = Slice()
+    slice = Slice(1000)

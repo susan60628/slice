@@ -149,7 +149,6 @@ class Slice:
         SE = (capacity_uRLLC + capacity_eMBB + capacity_mMTC) / 10
         # change SE dimension(-1~1)
         SE_point = SE / (6.65 - 0.14) * 2 - 1
-        self.SE_hist.append(SE)
 
         # calculate latency of spectrum: 8Mbps = 1 MB/s, 100ms = 1s
         np_latency_uRLLC = (data_uRLLC[:, 1:2] * 100 * 8) / (capacity_uRLLC * 1000000)
@@ -354,4 +353,4 @@ class Slice:
         plt.show()
 
 if __name__ == "__main__":
-    slice = Slice()
+    slice = Slice(1000)
