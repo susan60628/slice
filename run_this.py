@@ -3,7 +3,7 @@ from DQN_modified import DeepQNetwork
 import numpy as np
 import matplotlib.pyplot as plt
 
-iteration = 100
+iteration = 1000
 list_action = []
 b_draw_plt = True
 
