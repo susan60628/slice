@@ -3,7 +3,7 @@ from DQN_modified import DeepQNetwork
 import numpy as np
 import matplotlib.pyplot as plt
 
-iteration = 1000
+iteration = 100
 list_action = []
 b_draw_plt = True
 
@@ -48,7 +48,7 @@ def run_Slice():
 
             if (step > iteration) and (step % 5 == 0):
                 cost = RL.learn()
-                print("episode:", episode, "step:", step,"o:", observation, "a:", action, "r:", reward, "o_:", observation_, "cost:", cost)
+                print("episode:", episode, "iteration:", step,"o:", observation, "a:", action, "r:", reward, "o_:", observation_, "cost:", cost)
                 list_action.append(action)
 
             step += 1
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     run_Slice()
     if b_draw_plt:
         RL.plot_cost()
-        # env.plot_latency()
+        env.plot_latency()
         env.plot_se()
         # env.plot_cr()
         plot_action()

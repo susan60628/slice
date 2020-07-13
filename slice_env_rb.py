@@ -15,6 +15,10 @@ class Slice:
         self.n_actions = len(self.action_space)
         self.n_features = 3
         self.SE_hist = []
+        self.latency_hist = []
+        self.latency_uRLLC_hist = []
+        self.latency_eMBB_hist = []
+        self.latency_mMTC_hist = []
         np.savetxt("action_data.csv", self.action_space, fmt='%d,')
 
     def define_action(self):
@@ -66,8 +70,8 @@ class Slice:
         np_latency_uRLLC_a = data_uRLLC[:, 2:3] - np_latency_uRLLC
         np_latency_eMBB_a = (data_eMBB[:, 2:3] - np_latency_eMBB) * 0.1
         np_latency_mMTC_a = (data_mMTC[:, 2:3] - np_latency_mMTC) * 0.001
-        # change latency dimension
-        latency_point = (np.sum(np_latency_uRLLC_a) + np.sum(np_latency_eMBB_a) + np.sum(np_latency_mMTC_a)) / (np_latency_uRLLC_a.shape[0] + np_latency_eMBB_a.shape[0] + np_latency_mMTC_a.shape[0])
+        # change latency dimension  
+        latency_point = (np.average(np_latency_uRLLC_a) + np.average(np_latency_eMBB_a) + np.average(np_latency_mMTC_a)) / 3
 
         # calculate error rate
         error_uRLLC = 0 if np.sum(data_uRLLC[:, 1:2]) <= (capacity_uRLLC * 1000000 / 8) else (self.round_robin(data_uRLLC[:, 1:2], capacity_uRLLC).shape[0])/(data_uRLLC[:, 1:2].shape[0])
@@ -82,6 +86,10 @@ class Slice:
         # append list_hist if RL learned
         if step > self.iteration and (step % 5 == 0):           
             self.SE_hist.append(SE)
+            self.latency_hist.append(np.average(np_latency_uRLLC) + np.average(np_latency_eMBB) + np.average(np_latency_mMTC))
+            self.latency_uRLLC_hist.append(np.average(np_latency_uRLLC))
+            self.latency_eMBB_hist.append(np.average(np_latency_eMBB))
+            self.latency_mMTC_hist.append(np.average(np_latency_mMTC))
 
         reward = SE_point + latency_point + error_point
         return reward
@@ -91,9 +99,9 @@ class Slice:
         i_temp = self.iteration + 1
         
         # generate random packet for iteration
-        self.np_data_uRLLC = self.generate_data("uRLLC",160,200,int((i_temp*1000)/160),1,0.00001)
-        self.np_data_eMBB = self.generate_data("eMBB",2,12,int((i_temp*1000)/2),10,0.001)
-        self.np_data_mMTC = self.generate_data("mMTC",10,160,int((i_temp*1000)/10),1000,0.01)
+        self.np_data_uRLLC = self.generate_data("uRLLC",8,0,int((i_temp*1000)/8),1,0.00001)
+        self.np_data_eMBB = self.generate_data("eMBB",25,0,int((i_temp*1000)/25),10,0.001)
+        self.np_data_mMTC = self.generate_data("mMTC",25,0,int((i_temp*1000)/25),1000,0.01)
 
         # cut data to iteration
         self.np_data_uRLLC_a = self.cut_data(self.np_data_uRLLC[:, :1], i_temp)
@@ -108,8 +116,11 @@ class Slice:
         return self.data
 
     def generate_data(self, type, min_a, max_a, s, latency, error):
-        # defined arrival time (ms)
-        self.np_arrival = np.random.randint(min_a, max_a, [s])
+        # defined arrival time (ms), max_a=0 -> fix arrival time
+        if max_a == 0:
+            self.np_arrival = np.full(s, min_a)
+        else:
+            self.np_arrival = np.random.randint(min_a, max_a, [s])
 
         # defined datasize (byte)
         if type == "mMTC":
@@ -166,6 +177,16 @@ class Slice:
         plt.plot(np.arange(len(self.SE_hist)), self.SE_hist)
         plt.ylabel('SE')
         plt.xlabel('training steps')
+        plt.show()
+
+    def plot_latency(self):
+        plt.plot(np.arange(len(self.latency_hist)), self.latency_hist, label="Total")
+        plt.plot(np.arange(len(self.latency_uRLLC_hist)), self.latency_uRLLC_hist, label="uRLLC")
+        plt.plot(np.arange(len(self.latency_eMBB_hist)), self.latency_eMBB_hist, label= "eMBB")
+        plt.plot(np.arange(len(self.latency_mMTC_hist)), self.latency_mMTC_hist, label="mMTC")
+        plt.ylabel('Latency')
+        plt.xlabel('training steps')
+        plt.legend()
         plt.show()
 
 if __name__ == "__main__":
